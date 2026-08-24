@@ -20,6 +20,10 @@ export function ProductPurchasePanel({ product }: { product: Product }) {
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const primaryImage = product.images?.find((img) => img.is_primary) ?? product.images?.[0];
+  const hasDiscount = Boolean(product.compare_at_price && product.compare_at_price > product.price);
+  const discountPercent = hasDiscount
+    ? Math.round((1 - product.price / product.compare_at_price!) * 100)
+    : 0;
   const numberValid = isValidCustomNumber(number, product.min_number, product.max_number);
   const nameOk = !product.allow_custom_name || name.trim().length > 0;
   const numberOk = !product.allow_custom_number || (number !== "" && numberValid);
@@ -58,7 +62,19 @@ export function ProductPurchasePanel({ product }: { product: Product }) {
         )}
         <h1 className="font-display text-2xl font-bold text-ink lg:text-3xl">{product.name}</h1>
         {product.season && <p className="mt-1 text-sm text-ink-muted">Temporada {product.season}</p>}
-        <p className="mt-3 font-display text-3xl font-extrabold text-ink">{formatBRL(product.price)}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <p className="font-display text-3xl font-extrabold text-ink">{formatBRL(product.price)}</p>
+          {hasDiscount && (
+            <>
+              <span className="text-base font-medium text-ink-muted line-through">
+                {formatBRL(product.compare_at_price!)}
+              </span>
+              <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-bold text-accent">
+                -{discountPercent}%
+              </span>
+            </>
+          )}
+        </div>
         {product.description && <p className="mt-4 text-sm text-ink-muted">{product.description}</p>}
       </div>
 
@@ -96,7 +112,19 @@ export function ProductPurchasePanel({ product }: { product: Product }) {
       {/* Mobile: CTA fixo */}
       <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-base-border bg-base p-4 lg:hidden">
         <div className="mb-2 flex items-center justify-between">
-          <span className="font-display text-lg font-bold">{formatBRL(product.price)}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-display text-lg font-bold">{formatBRL(product.price)}</span>
+            {hasDiscount && (
+              <>
+                <span className="text-xs font-medium text-ink-muted line-through">
+                  {formatBRL(product.compare_at_price!)}
+                </span>
+                <span className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-bold text-accent">
+                  -{discountPercent}%
+                </span>
+              </>
+            )}
+          </div>
           {!canAdd && <span className="text-xs text-ink-muted">Escolha tamanho{product.allow_custom_name ? ", nome" : ""}{product.allow_custom_number ? " e número" : ""}</span>}
         </div>
         <div className="flex gap-2">

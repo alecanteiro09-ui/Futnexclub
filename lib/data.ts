@@ -58,7 +58,7 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("*, images:product_images(*), sizes:product_sizes(*), team:teams(*)")
+    .select("*, images:product_images(*), sizes:product_sizes(size:size_code, is_available), team:teams(*)")
     .eq("slug", slug)
     .eq("is_active", true)
     .single();
