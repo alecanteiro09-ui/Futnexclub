@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: "Inter", system-ui, sans-serif;
+  --font-display: "Inter", system-ui, sans-serif; /* trocar por fonte esportiva (ex: "Anton", "Bebas Neue") quando adicionada via next/font */
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-base text-ink antialiased;
+  }
+
+  ::selection {
+    @apply bg-accent/30 text-ink;
+  }
+
+  /* foco de teclado visível — acessibilidade obrigatória (ver seção 65 do brief) */
+  :focus-visible {
+    outline: 2px solid theme("colors.accent.DEFAULT");
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  .container-app {
+    @apply mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-10;
+  }
+
+  .h1-display {
+    @apply font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05];
+  }
+
+  .h2-display {
+    @apply font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3.5
+      font-semibold text-white transition-transform duration-150 ease-out
+      hover:bg-accent-dim active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-base-border
+      bg-transparent px-6 py-3.5 font-semibold text-ink transition-colors duration-150
+      hover:bg-base-soft active:scale-[0.98];
+  }
+
+  .btn-whatsapp {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-success px-6 py-4
+      font-bold text-base tracking-wide text-[#08130C] transition-transform duration-150
+      hover:brightness-105 active:scale-[0.98];
+  }
+
+  .card-surface {
+    @apply rounded-2xl border border-base-border bg-base-soft shadow-card;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full bg-gold/15 px-3 py-1 text-xs font-bold
+      uppercase tracking-wide text-gold;
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
