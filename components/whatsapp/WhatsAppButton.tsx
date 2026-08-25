@@ -12,6 +12,7 @@ interface WhatsAppButtonProps {
   label?: string;
   className?: string;
   fullWidth?: boolean;
+  disabled?: boolean;
 }
 
 /**
@@ -19,8 +20,10 @@ interface WhatsAppButtonProps {
  * Não tenta anexar imagem automaticamente — se a plataforma não suportar,
  * apenas abre a conversa com o texto preenchido (seção 37).
  */
-export function WhatsAppButton({ items, label = "Pedir pelo WhatsApp", className, fullWidth }: WhatsAppButtonProps) {
+export function WhatsAppButton({ items, label = "Pedir pelo WhatsApp", className, fullWidth, disabled }: WhatsAppButtonProps) {
   async function handleClick() {
+    if (disabled || items.length === 0) return;
+
     // Abre a aba ANTES do await — evita bloqueio de pop-up dos navegadores
     const newTab = window.open("", "_blank", "noopener,noreferrer");
 
@@ -50,7 +53,8 @@ export function WhatsAppButton({ items, label = "Pedir pelo WhatsApp", className
     <button
       type="button"
       onClick={handleClick}
-      className={cn("btn-whatsapp", fullWidth && "w-full", className)}
+      disabled={disabled}
+      className={cn("btn-whatsapp", fullWidth && "w-full", "disabled:cursor-not-allowed disabled:opacity-50", className)}
     >
       <MessageCircle className="h-5 w-5" />
       {label.toUpperCase()}

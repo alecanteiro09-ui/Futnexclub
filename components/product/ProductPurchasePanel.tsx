@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Product, SizeLabel } from "@/types";
+import { Product, SizeLabel, KitItemDraft } from "@/types";
 import { Personalization } from "@/components/product/Personalization";
 import { SizeSelector } from "@/components/product/SizeSelector";
 import { WhatsAppButton } from "@/components/whatsapp/WhatsAppButton";
@@ -29,10 +29,8 @@ export function ProductPurchasePanel({ product }: { product: Product }) {
   const numberOk = !product.allow_custom_number || (number !== "" && numberValid);
   const canAdd = Boolean(size) && nameOk && numberOk && !isFull;
 
-  function handleAddToKit() {
-    if (!canAdd) return;
-
-    addItem({
+  function buildCurrentItem(): KitItemDraft {
+    return {
       id: crypto.randomUUID(),
       team: product.team
         ? { id: product.team.id, name: product.team.name, slug: product.team.slug, logo_url: product.team.logo_url }
@@ -42,7 +40,13 @@ export function ProductPurchasePanel({ product }: { product: Product }) {
       customName: name,
       customNumber: number,
       size,
-    });
+    };
+  }
+
+  function handleAddToKit() {
+    if (!canAdd) return;
+
+    addItem(buildCurrentItem());
 
     setFeedback("Camisa adicionada ao seu kit!");
     setTimeout(() => setFeedback(null), 2500);
@@ -106,8 +110,17 @@ export function ProductPurchasePanel({ product }: { product: Product }) {
         <button type="button" onClick={handleAddToKit} disabled={!canAdd} className="btn-secondary">
           Adicionar ao kit
         </button>
-        <WhatsAppButton items={size ? [...items] : items} label="Pedir pelo WhatsApp" />
+        <WhatsAppButton
+          items={canAdd ? [...items, buildCurrentItem()] : items}
+          label="Pedir pelo WhatsApp"
+          disabled={!canAdd}
+        />
       </div>
+      {!canAdd && (
+        <p className="hidden text-xs text-ink-muted lg:block">
+          Escolha tamanho{product.allow_custom_name ? ", nome" : ""}{product.allow_custom_number ? " e número" : ""} para continuar.
+        </p>
+      )}
 
       {/* Mobile: CTA fixo */}
       <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-base-border bg-base p-4 lg:hidden">

@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils";
 import { parseProductImportCsv, hasBlockingIssues } from "@/lib/import/productImport";
 
-const MAX_GROUPS = 200;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 15000;
 
@@ -119,17 +118,6 @@ export async function importProducts(_prev: ImportSummary, formData: FormData): 
   if (parsed.groups.length === 0) {
     return { totalGroups: 0, created: 0, updated: 0, failed: 0, results: [], error: "Nenhum produto encontrado no arquivo." };
   }
-  if (parsed.groups.length > MAX_GROUPS) {
-    return {
-      totalGroups: parsed.groups.length,
-      created: 0,
-      updated: 0,
-      failed: 0,
-      results: [],
-      error: `O arquivo tem ${parsed.groups.length} produtos. Divida em arquivos de até ${MAX_GROUPS} para evitar timeout do servidor.`,
-    };
-  }
-
   const teamCache = new Map<string, { id: string; created: boolean }>();
   const usedSlugs = new Set<string>();
   const results: ImportRowResult[] = [];

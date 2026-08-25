@@ -57,6 +57,10 @@ export default function ImportarProdutosPage() {
           As imagens precisam estar publicamente acessíveis (JPG, PNG ou WEBP, até 8MB) — o site baixa cada uma e guarda uma cópia própria no
           Storage.
         </p>
+        <p>
+          Não há limite de produtos por arquivo. Para catálogos muito grandes (centenas de produtos com várias fotos
+          cada), a importação pode demorar alguns minutos — não feche a página enquanto ela estiver rodando.
+        </p>
       </div>
     </div>
   );
