@@ -1,0 +1,4 @@
+handle,nome,time,temporada,categoria,descricao,preco,preco_de,tamanhos,imagem_url,imagens,ativo,destaque,mais_vendido,lancamento
+flamengo-i-2026,Flamengo I 2026,Flamengo,2026,casa,"Camisa modelo torcedor, tecido dry-fit.",149.90,189.90,P|M|G|GG,https://exemplo.com/fotos/flamengo-i-2026-frente.jpg,,sim,sim,nao,sim
+flamengo-i-2026,,,,,,,,,https://exemplo.com/fotos/flamengo-i-2026-costas.jpg,,,,,
+palmeiras-ii-2026,Palmeiras II 2026,Palmeiras,2026,fora,"Camisa modelo torcedor, tecido dry-fit.",149.90,,P|M|G,,https://exemplo.com/fotos/palmeiras-ii-2026-frente.jpg|https://exemplo.com/fotos/palmeiras-ii-2026-costas.jpg,sim,nao,nao,nao

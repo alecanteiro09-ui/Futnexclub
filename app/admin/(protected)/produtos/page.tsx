@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { duplicateProduct, deleteProduct } from "@/lib/actions/products";
 
@@ -19,9 +19,14 @@ export default async function AdminProdutosPage() {
     <div>
       <div className="mb-8 flex items-center justify-between">
         <h1 className="h2-display">Produtos</h1>
-        <Link href="/admin/produtos/novo" className="btn-primary">
-          <Plus className="h-4 w-4" /> Novo produto
-        </Link>
+        <div className="flex gap-3">
+          <Link href="/admin/produtos/importar" className="btn-secondary">
+            <Upload className="h-4 w-4" /> Importar
+          </Link>
+          <Link href="/admin/produtos/novo" className="btn-primary">
+            <Plus className="h-4 w-4" /> Novo produto
+          </Link>
+        </div>
       </div>
 
       <div className="card-surface overflow-hidden">
