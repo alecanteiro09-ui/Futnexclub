@@ -102,6 +102,21 @@ async function downloadAndUploadImage(supabase: SupabaseClient, productId: strin
 }
 
 export async function importProducts(_prev: ImportSummary, formData: FormData): Promise<ImportSummary> {
+  try {
+    return await runImport(formData);
+  } catch (err) {
+    return {
+      totalGroups: 0,
+      created: 0,
+      updated: 0,
+      failed: 0,
+      results: [],
+      error: err instanceof Error ? `Erro inesperado na importação: ${err.message}` : "Erro inesperado na importação.",
+    };
+  }
+}
+
+async function runImport(formData: FormData): Promise<ImportSummary> {
   const supabase = createClient();
 
   const file = formData.get("csv_file");
@@ -134,98 +149,108 @@ export async function importProducts(_prev: ImportSummary, formData: FormData): 
       continue;
     }
 
-    const team = await resolveTeamId(supabase, group.teamName, teamCache);
-    if (!team) {
+    try {
+      const team = await resolveTeamId(supabase, group.teamName, teamCache);
+      if (!team) {
+        failed++;
+        results.push({
+          key: group.key,
+          title: group.title,
+          status: "error",
+          messages: [...messages, `Não foi possível localizar/criar o time "${group.teamName}".`],
+        });
+        continue;
+      }
+      if (team.created) messages.push(`Time "${group.teamName}" criado automaticamente.`);
+
+      let baseSlug = slugify(`${group.title}-${group.teamName}-${group.season ?? ""}`);
+      if (!baseSlug) baseSlug = slugify(group.title) || group.key;
+      let slug = baseSlug;
+      let suffix = 2;
+      while (usedSlugs.has(slug)) {
+        slug = `${baseSlug}-${suffix++}`;
+      }
+      usedSlugs.add(slug);
+
+      const { data: existingProduct } = await supabase.from("products").select("id").eq("slug", slug).maybeSingle();
+
+      const payload = {
+        name: group.title,
+        team_id: team.id,
+        season: group.season,
+        category: group.category,
+        description: group.description,
+        price: group.price,
+        compare_at_price: group.compareAtPrice,
+        is_active: group.isActive,
+        is_featured: group.isFeatured,
+        is_best_seller: group.isBestSeller,
+        is_new: group.isNew,
+        allow_custom_name: group.allowCustomName,
+        allow_custom_number: group.allowCustomNumber,
+        max_name_characters: group.maxNameCharacters,
+        min_number: group.minNumber,
+        max_number: group.maxNumber,
+        updated_at: new Date().toISOString(),
+      };
+
+      let productId: string;
+      let status: "created" | "updated";
+
+      if (existingProduct) {
+        const { error } = await supabase.from("products").update(payload).eq("id", existingProduct.id);
+        if (error) {
+          failed++;
+          results.push({ key: group.key, title: group.title, status: "error", messages: [...messages, error.message] });
+          continue;
+        }
+        productId = existingProduct.id;
+        status = "updated";
+      } else {
+        const { data: inserted, error } = await supabase
+          .from("products")
+          .insert({ ...payload, slug })
+          .select("id")
+          .single();
+        if (error || !inserted) {
+          failed++;
+          results.push({ key: group.key, title: group.title, status: "error", messages: [...messages, error?.message ?? "Falha ao criar produto."] });
+          continue;
+        }
+        productId = inserted.id;
+        status = "created";
+      }
+
+      const uploadedUrls: string[] = [];
+      for (const img of group.images) {
+        const publicUrl = await downloadAndUploadImage(supabase, productId, img.url);
+        if (publicUrl) uploadedUrls.push(publicUrl);
+        else messages.push(`Falha ao baixar imagem: ${img.url}`);
+      }
+      if (uploadedUrls.length > 0) {
+        await supabase.from("product_images").delete().eq("product_id", productId);
+        await supabase.from("product_images").insert(
+          uploadedUrls.map((url, index) => ({ product_id: productId, image_url: url, sort_order: index, is_primary: index === 0 }))
+        );
+      }
+
+      await supabase.from("product_sizes").delete().eq("product_id", productId);
+      if (group.sizes.length > 0) {
+        await supabase.from("product_sizes").insert(group.sizes.map((size) => ({ product_id: productId, size_code: size, is_available: true })));
+      }
+
+      if (status === "created") created++;
+      else updated++;
+      results.push({ key: group.key, title: group.title, status, productId, slug, messages });
+    } catch (err) {
       failed++;
       results.push({
         key: group.key,
-        title: group.title,
+        title: group.title || group.key,
         status: "error",
-        messages: [...messages, `Não foi possível localizar/criar o time "${group.teamName}".`],
+        messages: [...messages, err instanceof Error ? err.message : "Erro inesperado ao processar este produto."],
       });
-      continue;
     }
-    if (team.created) messages.push(`Time "${group.teamName}" criado automaticamente.`);
-
-    let baseSlug = slugify(`${group.title}-${group.teamName}-${group.season ?? ""}`);
-    if (!baseSlug) baseSlug = slugify(group.title) || group.key;
-    let slug = baseSlug;
-    let suffix = 2;
-    while (usedSlugs.has(slug)) {
-      slug = `${baseSlug}-${suffix++}`;
-    }
-    usedSlugs.add(slug);
-
-    const { data: existingProduct } = await supabase.from("products").select("id").eq("slug", slug).maybeSingle();
-
-    const payload = {
-      name: group.title,
-      team_id: team.id,
-      season: group.season,
-      category: group.category,
-      description: group.description,
-      price: group.price,
-      compare_at_price: group.compareAtPrice,
-      is_active: group.isActive,
-      is_featured: group.isFeatured,
-      is_best_seller: group.isBestSeller,
-      is_new: group.isNew,
-      allow_custom_name: group.allowCustomName,
-      allow_custom_number: group.allowCustomNumber,
-      max_name_characters: group.maxNameCharacters,
-      min_number: group.minNumber,
-      max_number: group.maxNumber,
-      updated_at: new Date().toISOString(),
-    };
-
-    let productId: string;
-    let status: "created" | "updated";
-
-    if (existingProduct) {
-      const { error } = await supabase.from("products").update(payload).eq("id", existingProduct.id);
-      if (error) {
-        failed++;
-        results.push({ key: group.key, title: group.title, status: "error", messages: [...messages, error.message] });
-        continue;
-      }
-      productId = existingProduct.id;
-      status = "updated";
-    } else {
-      const { data: inserted, error } = await supabase
-        .from("products")
-        .insert({ ...payload, slug })
-        .select("id")
-        .single();
-      if (error || !inserted) {
-        failed++;
-        results.push({ key: group.key, title: group.title, status: "error", messages: [...messages, error?.message ?? "Falha ao criar produto."] });
-        continue;
-      }
-      productId = inserted.id;
-      status = "created";
-    }
-
-    const uploadedUrls: string[] = [];
-    for (const img of group.images) {
-      const publicUrl = await downloadAndUploadImage(supabase, productId, img.url);
-      if (publicUrl) uploadedUrls.push(publicUrl);
-      else messages.push(`Falha ao baixar imagem: ${img.url}`);
-    }
-    if (uploadedUrls.length > 0) {
-      await supabase.from("product_images").delete().eq("product_id", productId);
-      await supabase.from("product_images").insert(
-        uploadedUrls.map((url, index) => ({ product_id: productId, image_url: url, sort_order: index, is_primary: index === 0 }))
-      );
-    }
-
-    await supabase.from("product_sizes").delete().eq("product_id", productId);
-    if (group.sizes.length > 0) {
-      await supabase.from("product_sizes").insert(group.sizes.map((size) => ({ product_id: productId, size_code: size, is_available: true })));
-    }
-
-    if (status === "created") created++;
-    else updated++;
-    results.push({ key: group.key, title: group.title, status, productId, slug, messages });
   }
 
   revalidatePath("/admin/produtos");

@@ -11,7 +11,8 @@ import { stringifyCsv } from "@/lib/import/csv";
 const INITIAL_STATE: ImportSummary = { totalGroups: 0, created: 0, updated: 0, failed: 0, results: [] };
 
 export function ProductImportWizard() {
-  const [state, formAction] = useFormState<ImportSummary, FormData>(importProducts, INITIAL_STATE);
+  const [rawState, formAction] = useFormState<ImportSummary, FormData>(importProducts, INITIAL_STATE);
+  const state = rawState ?? INITIAL_STATE;
   const [preview, setPreview] = useState<ParseResult | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
