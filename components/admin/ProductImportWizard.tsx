@@ -1,21 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
 import Link from "next/link";
 import { Upload, Download, CheckCircle2, AlertTriangle, XCircle, Loader2 } from "lucide-react";
-import { importProducts, ImportSummary } from "@/lib/actions/import";
-import { parseProductImportCsv, ParseResult, hasBlockingIssues } from "@/lib/import/productImport";
+import { importProductGroups, ImportSummary, ImportRowResult } from "@/lib/actions/import";
+import { parseProductImportCsv, ParseResult, hasBlockingIssues, IMPORT_BATCH_SIZE } from "@/lib/import/productImport";
 import { stringifyCsv } from "@/lib/import/csv";
 
-const INITIAL_STATE: ImportSummary = { totalGroups: 0, created: 0, updated: 0, failed: 0, results: [] };
+const EMPTY_SUMMARY: ImportSummary = { totalGroups: 0, created: 0, updated: 0, failed: 0, results: [] };
 
 export function ProductImportWizard() {
-  const [rawState, formAction] = useFormState<ImportSummary, FormData>(importProducts, INITIAL_STATE);
-  const state = rawState ?? INITIAL_STATE;
   const [preview, setPreview] = useState<ParseResult | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [summary, setSummary] = useState<ImportSummary | null>(null);
 
   const validCount = useMemo(() => preview?.groups.filter((g) => !hasBlockingIssues(g)).length ?? 0, [preview]);
   const errorCount = useMemo(() => preview?.groups.filter((g) => hasBlockingIssues(g)).length ?? 0, [preview]);
@@ -43,11 +43,47 @@ export function ProductImportWizard() {
     }
   }
 
+  async function handleImport() {
+    if (!preview || preview.fatalError) return;
+    const groups = preview.groups.filter((g) => !hasBlockingIssues(g));
+    if (groups.length === 0) return;
+
+    setImporting(true);
+    setProgress({ done: 0, total: groups.length });
+
+    const aggregate: ImportSummary = { totalGroups: groups.length, created: 0, updated: 0, failed: 0, results: [] };
+
+    for (let i = 0; i < groups.length; i += IMPORT_BATCH_SIZE) {
+      const batch = groups.slice(i, i + IMPORT_BATCH_SIZE);
+      let batchResults: ImportRowResult[];
+      try {
+        const result = await importProductGroups(batch);
+        batchResults = result.results;
+        aggregate.created += result.created;
+        aggregate.updated += result.updated;
+        aggregate.failed += result.failed;
+      } catch (err) {
+        batchResults = batch.map((g) => ({
+          key: g.key,
+          title: g.title || g.key,
+          status: "error" as const,
+          messages: [err instanceof Error ? err.message : "Falha de conexão ao importar este lote."],
+        }));
+        aggregate.failed += batch.length;
+      }
+      aggregate.results.push(...batchResults);
+      setProgress({ done: Math.min(i + IMPORT_BATCH_SIZE, groups.length), total: groups.length });
+      setSummary({ ...aggregate, results: [...aggregate.results] });
+    }
+
+    setImporting(false);
+  }
+
   function downloadErrorReport() {
-    if (!state.results.length) return;
+    if (!summary?.results.length) return;
     const rows = [
       ["Produto", "Status", "Mensagens"],
-      ...state.results
+      ...summary.results
         .filter((r) => r.status === "error" || r.messages.length > 0)
         .map((r) => [r.title, r.status, r.messages.join(" | ")]),
     ];
@@ -60,12 +96,13 @@ export function ProductImportWizard() {
     URL.revokeObjectURL(url);
   }
 
-  const hasResult = state.results.length > 0 || Boolean(state.error);
+  const result = summary ?? EMPTY_SUMMARY;
+  const hasResult = summary !== null;
 
   return (
     <div className="max-w-3xl space-y-6">
       {!hasResult && (
-        <form action={formAction} className="space-y-6">
+        <div className="space-y-6">
           <div className="card-surface space-y-4 p-6">
             <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-base-border px-6 py-10 text-center transition-colors hover:border-accent/50">
               <Upload className="h-6 w-6 text-ink-muted" />
@@ -73,10 +110,9 @@ export function ProductImportWizard() {
               <span className="text-xs text-ink-muted">Ou exporte diretamente da Shopify (products_export.csv)</span>
               <input
                 type="file"
-                name="csv_file"
                 accept=".csv,text/csv"
-                required
                 className="hidden"
+                disabled={importing}
                 onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
               />
             </label>
@@ -144,63 +180,81 @@ export function ProductImportWizard() {
 
                   <p className="text-xs text-ink-muted">
                     Times que ainda não existirem serão criados automaticamente. Produtos com o mesmo nome + time +
-                    temporada de um já cadastrado serão atualizados em vez de duplicados.
+                    temporada de um já cadastrado serão atualizados em vez de duplicados. O envio é feito em lotes de{" "}
+                    {IMPORT_BATCH_SIZE}, então arquivos grandes não travam nem estouram limite do servidor.
                   </p>
 
-                  <SubmitButton disabled={validCount === 0} count={validCount} />
+                  <button
+                    type="button"
+                    onClick={handleImport}
+                    disabled={validCount === 0 || importing}
+                    className="btn-primary w-full justify-center"
+                  >
+                    {importing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Importando {progress?.done ?? 0} de {progress?.total ?? validCount}...
+                      </>
+                    ) : (
+                      `Importar ${validCount} produto${validCount === 1 ? "" : "s"}`
+                    )}
+                  </button>
+
+                  {importing && progress && (
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-base-soft">
+                      <div
+                        className="h-full bg-accent transition-all"
+                        style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </div>
           )}
-        </form>
+        </div>
       )}
 
       {hasResult && (
         <div className="card-surface space-y-4 p-6">
-          {state.error ? (
-            <p className="flex items-center gap-2 text-sm text-red-400">
-              <XCircle className="h-4 w-4" /> {state.error}
-            </p>
-          ) : (
-            <>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <Stat label="Criados" value={state.created} tone="success" />
-                <Stat label="Atualizados" value={state.updated} tone="neutral" />
-                <Stat label="Falharam" value={state.failed} tone="error" />
-              </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <Stat label="Criados" value={result.created} tone="success" />
+            <Stat label="Atualizados" value={result.updated} tone="neutral" />
+            <Stat label="Falharam" value={result.failed} tone="error" />
+          </div>
 
-              <div className="max-h-96 overflow-y-auto rounded-lg border border-base-border">
-                <table className="w-full text-left text-xs">
-                  <thead className="sticky top-0 border-b border-base-border bg-base-soft text-ink-muted">
-                    <tr>
-                      <th className="p-2">Produto</th>
-                      <th className="p-2">Status</th>
-                      <th className="p-2">Mensagens</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {state.results.map((r) => (
-                      <tr key={r.key} className="border-b border-base-border last:border-0">
-                        <td className="p-2 font-medium">{r.title}</td>
-                        <td className="p-2">
-                          <StatusBadge status={r.status} />
-                        </td>
-                        <td className="p-2 text-ink-muted">{r.messages.join(" · ") || "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className="max-h-96 overflow-y-auto rounded-lg border border-base-border">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 border-b border-base-border bg-base-soft text-ink-muted">
+                <tr>
+                  <th className="p-2">Produto</th>
+                  <th className="p-2">Status</th>
+                  <th className="p-2">Mensagens</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.results.map((r, i) => (
+                  <tr key={`${r.key}-${i}`} className="border-b border-base-border last:border-0">
+                    <td className="p-2 font-medium">{r.title}</td>
+                    <td className="p-2">
+                      <StatusBadge status={r.status} />
+                    </td>
+                    <td className="p-2 text-ink-muted">{r.messages.join(" · ") || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-              <div className="flex flex-wrap gap-3">
-                <button type="button" onClick={downloadErrorReport} className="btn-secondary">
-                  <Download className="h-4 w-4" /> Baixar relatório
-                </button>
-                <Link href="/admin/produtos" className="btn-primary">
-                  Ver produtos
-                </Link>
-              </div>
-            </>
+          {!importing && (
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={downloadErrorReport} className="btn-secondary">
+                <Download className="h-4 w-4" /> Baixar relatório
+              </button>
+              <Link href="/admin/produtos" className="btn-primary">
+                Ver produtos
+              </Link>
+            </div>
           )}
         </div>
       )}
@@ -226,19 +280,4 @@ function StatusBadge({ status }: { status: string }) {
   };
   const label: Record<string, string> = { created: "Criado", updated: "Atualizado", error: "Erro" };
   return <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${tone[status] ?? ""}`}>{label[status] ?? status}</span>;
-}
-
-function SubmitButton({ disabled, count }: { disabled: boolean; count: number }) {
-  const { pending } = useFormStatus();
-  return (
-    <button type="submit" disabled={disabled || pending} className="btn-primary w-full justify-center">
-      {pending ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" /> Importando... isso pode levar alguns minutos
-        </>
-      ) : (
-        `Importar ${count} produto${count === 1 ? "" : "s"}`
-      )}
-    </button>
-  );
 }

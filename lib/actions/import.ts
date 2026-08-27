@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils";
-import { parseProductImportCsv, hasBlockingIssues } from "@/lib/import/productImport";
+import { hasBlockingIssues, ParsedProductGroup } from "@/lib/import/productImport";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 15000;
@@ -101,46 +101,40 @@ async function downloadAndUploadImage(supabase: SupabaseClient, productId: strin
   }
 }
 
-export async function importProducts(_prev: ImportSummary, formData: FormData): Promise<ImportSummary> {
+/**
+ * Processa um lote pequeno de produtos já parseados no cliente (ver
+ * lib/import/productImport.ts). O CSV inteiro nunca trafega para o servidor —
+ * só os grupos de cada lote, como JSON — o que evita os limites de tamanho de
+ * corpo/tempo de execução de Server Actions em arquivos grandes.
+ */
+export async function importProductGroups(groups: ParsedProductGroup[]): Promise<ImportSummary> {
   try {
-    return await runImport(formData);
+    return await runBatch(groups);
   } catch (err) {
     return {
-      totalGroups: 0,
+      totalGroups: groups.length,
       created: 0,
       updated: 0,
-      failed: 0,
-      results: [],
-      error: err instanceof Error ? `Erro inesperado na importação: ${err.message}` : "Erro inesperado na importação.",
+      failed: groups.length,
+      results: groups.map((g) => ({
+        key: g.key,
+        title: g.title || g.key,
+        status: "error" as const,
+        messages: [err instanceof Error ? `Erro inesperado: ${err.message}` : "Erro inesperado na importação."],
+      })),
     };
   }
 }
 
-async function runImport(formData: FormData): Promise<ImportSummary> {
+async function runBatch(groups: ParsedProductGroup[]): Promise<ImportSummary> {
   const supabase = createClient();
-
-  const file = formData.get("csv_file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { totalGroups: 0, created: 0, updated: 0, failed: 0, results: [], error: "Selecione um arquivo CSV." };
-  }
-
-  const text = await file.text();
-  const parsed = parseProductImportCsv(text);
-
-  if (parsed.fatalError) {
-    return { totalGroups: 0, created: 0, updated: 0, failed: 0, results: [], error: parsed.fatalError };
-  }
-  if (parsed.groups.length === 0) {
-    return { totalGroups: 0, created: 0, updated: 0, failed: 0, results: [], error: "Nenhum produto encontrado no arquivo." };
-  }
   const teamCache = new Map<string, { id: string; created: boolean }>();
-  const usedSlugs = new Set<string>();
   const results: ImportRowResult[] = [];
   let created = 0;
   let updated = 0;
   let failed = 0;
 
-  for (const group of parsed.groups) {
+  for (const group of groups) {
     const messages = group.issues.map((i) => i.message);
 
     if (hasBlockingIssues(group)) {
@@ -163,15 +157,7 @@ async function runImport(formData: FormData): Promise<ImportSummary> {
       }
       if (team.created) messages.push(`Time "${group.teamName}" criado automaticamente.`);
 
-      let baseSlug = slugify(`${group.title}-${group.teamName}-${group.season ?? ""}`);
-      if (!baseSlug) baseSlug = slugify(group.title) || group.key;
-      let slug = baseSlug;
-      let suffix = 2;
-      while (usedSlugs.has(slug)) {
-        slug = `${baseSlug}-${suffix++}`;
-      }
-      usedSlugs.add(slug);
-
+      const slug = group.slug || slugify(group.title) || group.key;
       const { data: existingProduct } = await supabase.from("products").select("id").eq("slug", slug).maybeSingle();
 
       const payload = {
@@ -257,5 +243,5 @@ async function runImport(formData: FormData): Promise<ImportSummary> {
   revalidatePath("/admin/times");
   revalidatePath("/catalogo");
 
-  return { totalGroups: parsed.groups.length, created, updated, failed, results };
+  return { totalGroups: groups.length, created, updated, failed, results };
 }

@@ -4,6 +4,10 @@ import { ProductCategory, SizeLabel } from "@/types";
 
 const ALL_SIZES: SizeLabel[] = ["PP", "P", "M", "G", "GG", "XG", "XXG"];
 
+// Cada lote é processado numa única invocação de servidor (ver lib/actions/import.ts) —
+// mantém abaixo dos limites de tempo/tamanho de plataformas serverless mesmo em arquivos grandes.
+export const IMPORT_BATCH_SIZE = 12;
+
 export interface ImportImage {
   url: string;
   position: number;
@@ -17,6 +21,7 @@ export interface ImportRowIssue {
 
 export interface ParsedProductGroup {
   key: string;
+  slug: string;
   title: string;
   teamName: string;
   season: string | null;
@@ -173,6 +178,7 @@ export function parseProductImportCsv(csvText: string): ParseResult {
     if (!group) {
       group = {
         key,
+        slug: "",
         title: "",
         teamName: "",
         season: null,
@@ -316,5 +322,27 @@ export function parseProductImportCsv(csvText: string): ParseResult {
     if (g.images.length === 0) g.issues.push({ level: "warning", message: `Nenhuma imagem informada para "${g.title || g.key}".` });
   }
 
+  assignSlugs(groups);
+
   return { groups, totalRows: dataRows.length };
+}
+
+/**
+ * Calcula um slug único por grupo, considerando todo o arquivo de uma vez —
+ * assim a importação em lotes (ver lib/actions/import.ts) não precisa
+ * coordenar unicidade entre requisições separadas.
+ */
+function assignSlugs(groups: ParsedProductGroup[]): void {
+  const used = new Set<string>();
+  for (const g of groups) {
+    let base = slugify(`${g.title}-${g.teamName}-${g.season ?? ""}`);
+    if (!base) base = slugify(g.title) || g.key;
+    let slug = base;
+    let suffix = 2;
+    while (used.has(slug)) {
+      slug = `${base}-${suffix++}`;
+    }
+    used.add(slug);
+    g.slug = slug;
+  }
 }
