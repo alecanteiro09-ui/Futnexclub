@@ -31,6 +31,12 @@ export function ProductImportWizard() {
     try {
       const text = await file.text();
       setPreview(parseProductImportCsv(text));
+    } catch (err) {
+      setPreview({
+        groups: [],
+        totalRows: 0,
+        fatalError: err instanceof Error ? `Não foi possível ler o arquivo: ${err.message}` : "Não foi possível ler o arquivo.",
+      });
     } finally {
       setParsing(false);
     }
